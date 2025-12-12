@@ -6,21 +6,29 @@
     output wire lcd_mosi
 );
 
-    // =============================
-    // ПРОСТОЙ SPI SHIFT
-    // =============================
-    reg [7:0] data = 8'h00;
-    reg [4:0] bitcnt = 0;
-
-    assign lcd_cs   = 1'b0;   // всегда активен
-    assign lcd_dc   = 1'b1;   // данные
-    assign lcd_clk  = clk;    // просто гоним такт
-    assign lcd_mosi = data[7 - bitcnt];
+    // делитель 100 МГц → ~1 МГц
+    reg [6:0] div = 0;
+    reg spi_clk = 0;
 
     always @(posedge clk) begin
+        div <= div + 1;
+        if (div == 50) begin
+            spi_clk <= ~spi_clk;
+            div <= 0;
+        end
+    end
+
+    assign lcd_clk = spi_clk;
+    assign lcd_cs  = 1'b0;
+    assign lcd_dc  = 1'b0;   // КОМАНДА
+
+    reg [7:0] cmd = 8'h01;   // Software Reset
+    reg [2:0] bitcnt = 0;
+
+    assign lcd_mosi = cmd[7 - bitcnt];
+
+    always @(posedge spi_clk) begin
         bitcnt <= bitcnt + 1;
-        if (bitcnt == 7)
-            bitcnt <= 0;
     end
 
 endmodule
