@@ -1,42 +1,11 @@
-services:
-  fronted:
-    build: ./web-app-pr7
-    container_name: web-app-pr7
-    ports:
-    - "8000:80"
-    environment:
-      API_URL: http://backend:8080
-    networks:
-      - frontend
-      - backend
-    depends_on:
-      - backend
+FROM openjdk:23-ea-23-slim as builder
+WORKDIR /app
+COPY . .
+RUN chmod +x ./gradlew
+RUN ./gradlew build -x test
 
-  backend:
-    build: ./spring-back-pr7
-    container_name: spring-back-pr7
-    environment:
-      DATABASE_PASSWORD: 1
-      DATABASE_URL: jdbc:postgersql://bd:5432/bd_prac4
-DATABASE_USERNAME: eugen
-    networks:
-      - backend
-    depends_on:
-      - bd
-  bd:
-    image: postgres:16
-    container_name: postgres
-    environment:
-      POSTGRES_PASSWORD: 1
-      POSRGRES_USER: eugen
-      POSTGRES_DB: bd_prac4
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - backend
-networks:
-  frontend:
-  backend:
-
-volumes:
-  pgdata:
+FROM openjdk:23-ea-23-slim
+WORKDIR /app
+COPY --from=builder /app/build/libs/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
