@@ -1,34 +1,42 @@
- module top(
-    input  wire clk,
-    output wire lcd_cs,
-    output wire lcd_dc,
-    output wire lcd_clk,
-    output wire lcd_mosi
-);
+services:
+  fronted:
+    build: ./web-app-pr7
+    container_name: web-app-pr7
+    ports:
+    - "8000:80"
+    environment:
+      API_URL: http://backend:8080
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - backend
 
-    // делитель 100 МГц → ~1 МГц
-    reg [6:0] div = 0;
-    reg spi_clk = 0;
+  backend:
+    build: ./spring-back-pr7
+    container_name: spring-back-pr7
+    environment:
+      DATABASE_PASSWORD: 1
+      DATABASE_URL: jdbc:postgersql://bd:5432/bd_prac4
+DATABASE_USERNAME: eugen
+    networks:
+      - backend
+    depends_on:
+      - bd
+  bd:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: 1
+      POSRGRES_USER: eugen
+      POSTGRES_DB: bd_prac4
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+networks:
+  frontend:
+  backend:
 
-    always @(posedge clk) begin
-        div <= div + 1;
-        if (div == 50) begin
-            spi_clk <= ~spi_clk;
-            div <= 0;
-        end
-    end
-
-    assign lcd_clk = spi_clk;
-    assign lcd_cs  = 1'b0;
-    assign lcd_dc  = 1'b0;   // КОМАНДА
-
-    reg [7:0] cmd = 8'h01;   // Software Reset
-    reg [2:0] bitcnt = 0;
-
-    assign lcd_mosi = cmd[7 - bitcnt];
-
-    always @(posedge spi_clk) begin
-        bitcnt <= bitcnt + 1;
-    end
-
-endmodule
+volumes:
+  pgdata:
