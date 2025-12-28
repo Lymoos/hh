@@ -1,11 +1,216 @@
-FROM openjdk:23-ea-23-slim as builder
-WORKDIR /app
-COPY . .
-RUN chmod +x ./gradlew
-RUN ./gradlew build -x test
+Ок, по одному — так и надо 👍
+Начинаем с **PostgreSQL (в отчёте пишем PostgreSQL Pro, ставим обычный PostgreSQL)**.
 
-FROM openjdk:23-ea-23-slim
-WORKDIR /app
-COPY --from=builder /app/build/libs/*.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+Ниже прям пошагово: **что сделать, что должно получиться, что именно скринить**.
+
+---
+
+## Шаг 0. Подготовка Ubuntu (1 раз, перед всеми сервисами)
+
+Открой терминал и выполни:
+
+```bash
+sudo apt update
+sudo apt -y upgrade
+sudo apt -y install ca-certificates curl gnupg lsb-release
+```
+
+### Что скринить
+
+* Скрин терминала после `apt update`/`upgrade` (видно, что система обновлена).
+
+---
+
+## Шаг 1. Ставим Docker + Compose (чтобы всё дальше ставить одинаково)
+
+### 1.1 Установка Docker (официальный репозиторий)
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+### 1.2 Делаем, чтобы docker работал без sudo
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+### 1.3 Проверка
+
+```bash
+docker --version
+docker compose version
+docker run --rm hello-world
+```
+
+### Что скринить (для отчёта 3.5 и вообще)
+
+1. вывод `docker --version` и `docker compose version`
+2. успешный вывод `hello-world`
+
+---
+
+## Шаг 2. PostgreSQL (в отчёте: PostgreSQL Pro)
+
+Мы поднимем PostgreSQL в Docker + сделаем тестовую БД и пользователя.
+Сразу заложим структуру, чтобы потом к ней подключались EspoCRM / OpenProject / Zammad (если нужно).
+
+### 2.1 Создаём папку проекта
+
+```bash
+mkdir -p ~/infra/services/postgres
+cd ~/infra/services/postgres
+```
+
+### 2.2 Создаём `compose.yml`
+
+Открой файл:
+
+```bash
+nano compose.yml
+```
+
+Вставь:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16
+    container_name: pg-main
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: infra_admin
+      POSTGRES_PASSWORD: StrongPass_12345
+      POSTGRES_DB: infra
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
+```
+
+> Пароль можешь поменять, но **потом не забудь везде использовать тот же**.
+
+### 2.3 Запуск
+
+```bash
+docker compose up -d
+docker ps
+```
+
+### Что скринить
+
+* `docker ps` где видно контейнер `pg-main` в статусе `Up`
+* сам файл `compose.yml` (можно скрин из nano/VS Code)
+
+---
+
+## Шаг 3. Проверка, что БД реально работает
+
+### 3.1 Зайти внутрь Postgres и посмотреть версии
+
+```bash
+docker exec -it pg-main psql -U infra_admin -d infra
+```
+
+Внутри psql выполни:
+
+```sql
+SELECT version();
+\l
+\du
+```
+
+Выход:
+
+```sql
+\q
+```
+
+### Что скринить
+
+* `SELECT version();` (это прям железное доказательство, что PostgreSQL поднят)
+* список баз `\l`
+
+---
+
+## Шаг 4. Создаём базы и пользователей под будущие сервисы (чтобы потом было проще)
+
+Снова зайди в psql:
+
+```bash
+docker exec -it pg-main psql -U infra_admin -d infra
+```
+
+Выполни:
+
+```sql
+-- базы под сервисы
+CREATE DATABASE gitlab_db;
+CREATE DATABASE openproject_db;
+CREATE DATABASE espocrm_db;
+CREATE DATABASE zammad_db;
+CREATE DATABASE nextcloud_db;
+CREATE DATABASE graylog_db;
+
+-- пользователь, который будет подключаться сервисами
+CREATE USER app_user WITH PASSWORD 'AppPass_12345';
+
+-- выдаём права
+GRANT ALL PRIVILEGES ON DATABASE gitlab_db TO app_user;
+GRANT ALL PRIVILEGES ON DATABASE openproject_db TO app_user;
+GRANT ALL PRIVILEGES ON DATABASE espocrm_db TO app_user;
+GRANT ALL PRIVILEGES ON DATABASE zammad_db TO app_user;
+GRANT ALL PRIVILEGES ON DATABASE nextcloud_db TO app_user;
+GRANT ALL PRIVILEGES ON DATABASE graylog_db TO app_user;
+```
+
+Проверка:
+
+```sql
+\l
+\q
+```
+
+### Что скринить
+
+* вывод `\l` где видно, что базы реально созданы
+
+---
+
+## Мини-текст для отчёта (чтобы ты просто вставил)
+
+Можешь вставить так (1–2 абзаца):
+
+> Произвёл развертывание СУБД (PostgreSQL Pro как целевого решения, совместимого с PostgreSQL). Для упрощения лабораторного развертывания на тестовой ВМ использована контейнеризация Docker и официальный образ PostgreSQL. Создан экземпляр СУБД, пользователь администрирования и набор баз данных для прикладных сервисов (GitLab, OpenProject, EspoCRM, Zammad, Nextcloud, Graylog). Работоспособность подтверждена запуском контейнера и выполнением SQL-команд проверки версии и списка БД.
+
+---
+
+## Что дальше (следующий сервис)
+
+После того как ты **поднимешь Postgres и сделаешь скрины**, следующим логичнее всего ставить:
+
+**GitLab** (он самый тяжёлый и сразу покажет, что всё ок).
+
+---
+
+Напиши:
+
+1. получилось ли `docker run hello-world`
+2. что показывает `docker ps` (контейнер pg-main Up?)
+
+И сразу двигаем к **GitLab**.
