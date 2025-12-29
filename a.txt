@@ -1,25 +1,24 @@
 Отлично, идём дальше 👍
-**EspoCRM** — ставим так же аккуратно и предсказуемо, чтобы **открылся по localhost** и ты спокойно сделал скриншоты.
+**Zammad — это helpdesk / система заявок**, как Jira Service Desk, Zendesk и т.п.
+Сделаем **быстро, стабильно и так, чтобы сразу открывалось в браузере**.
 
 ---
 
-# EspoCRM — установка через Docker
+# 🔧 Zammad — установка через Docker (рекомендовано)
 
-👉 цель: `http://localhost:8083`
+Мы ставим **официальный docker-стек**, он самый надёжный для лабы.
 
----
-
-## 1️⃣ Папка сервиса
+## 1️⃣ Подготовка каталогов
 
 ```bash
 cd ~/infra/services
-mkdir espocrm
-cd espocrm
+mkdir zammad
+cd zammad
 ```
 
 ---
 
-## 2️⃣ `docker-compose.yml` для EspoCRM
+## 2️⃣ docker-compose.yml для Zammad
 
 Создай файл:
 
@@ -27,52 +26,58 @@ cd espocrm
 nano docker-compose.yml
 ```
 
-Вставь **полностью**:
+Вставь **целиком** 👇
 
 ```yaml
 version: '3.8'
 
 services:
-  db:
-    image: mariadb:10.11
-    container_name: espocrm-db
-    restart: always
+  zammad-postgresql:
+    image: postgres:15
+    container_name: zammad-postgres
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: espocrm
-      MYSQL_USER: espocrm
-      MYSQL_PASSWORD: espocrm
+      POSTGRES_DB: zammad
+      POSTGRES_USER: zammad
+      POSTGRES_PASSWORD: zammad
     volumes:
-      - db:/var/lib/mysql
+      - zammad-db:/var/lib/postgresql/data
+    restart: unless-stopped
 
-  app:
-    image: espocrm/espocrm:latest
-    container_name: espocrm
-    restart: always
-    ports:
-      - "8083:80"
-    environment:
-      ESPOCRM_DATABASE_PLATFORM: Mysql
-      ESPOCRM_DATABASE_HOST: db
-      ESPOCRM_DATABASE_NAME: espocrm
-      ESPOCRM_DATABASE_USER: espocrm
-      ESPOCRM_DATABASE_PASSWORD: espocrm
-    volumes:
-      - espocrm:/var/www/html
+  zammad-redis:
+    image: redis:7
+    container_name: zammad-redis
+    restart: unless-stopped
+
+  zammad:
+    image: zammad/zammad:latest
+    container_name: zammad
     depends_on:
-      - db
+      - zammad-postgresql
+      - zammad-redis
+    ports:
+      - "8084:3000"
+    environment:
+      ZAMMAD_RAILS_SERVE_STATIC_FILES: "true"
+      ZAMMAD_DB_ADAPTER: postgresql
+      ZAMMAD_DB_HOST: zammad-postgresql
+      ZAMMAD_DB_NAME: zammad
+      ZAMMAD_DB_USER: zammad
+      ZAMMAD_DB_PASSWORD: zammad
+      ZAMMAD_REDIS_HOST: zammad-redis
+    volumes:
+      - zammad-data:/opt/zammad
+    restart: unless-stopped
 
 volumes:
-  db:
-  espocrm:
+  zammad-db:
+  zammad-data:
 ```
 
-Сохрани:
-`Ctrl + O → Enter → Ctrl + X`
+Сохрани → `Ctrl+O`, `Enter`, `Ctrl+X`
 
 ---
 
-## 3️⃣ Запуск EspoCRM
+## 3️⃣ Запуск Zammad
 
 ```bash
 docker compose up -d
@@ -84,80 +89,82 @@ docker compose up -d
 docker ps
 ```
 
-Должно быть:
+Ты должен увидеть:
 
-* `espocrm`
-* `espocrm-db`
-
----
-
-## 4️⃣ Ждём 30–60 секунд ⏳
-
-EspoCRM поднимается быстрее, чем GitLab и Nextcloud.
+* `zammad`
+* `zammad-postgres`
+* `zammad-redis`
 
 ---
 
-## 5️⃣ Открываем в браузере
+## 4️⃣ Ждём инициализацию (ВАЖНО)
 
-👉 **[http://localhost:8083](http://localhost:8083)**
+Zammad **не сразу открывается**.
+Подожди **2–5 минут**.
 
-Если всё ок — увидишь **мастер установки EspoCRM**.
-
----
-
-## 6️⃣ Настройки в установщике (ВАЖНО)
-
-### 📄 Database
-
-* Database type: **MySQL**
-* Host: `db`
-* Database name: `espocrm`
-* Username: `espocrm`
-* Password: `espocrm`
-
-### 👤 Admin
-
-* Username: `admin`
-* Password: `admin123`
-* Email: любой
-
-Дальше → **Install**
-
----
-
-## 7️⃣ Что заскринить для отчёта 📸
-
-Обязательно:
-
-1. `docker ps` (контейнеры EspoCRM)
-2. Мастер установки EspoCRM
-3. Главная страница CRM после входа (Dashboard / Accounts)
-
-Это **идеально закрывает CRM-сервис** в задании.
-
----
-
-## Если вдруг не открывается
-
-Сразу смотри:
+Можно смотреть логи:
 
 ```bash
-docker logs espocrm --tail=50
+docker logs -f zammad
 ```
 
-И скидывай ошибку — чиним быстро.
+Когда увидишь строки без ошибок — готово.
 
 ---
 
-## Что дальше по плану
+## 5️⃣ Открываем в браузере 🌐
 
-После EspoCRM логично:
+👉 **[http://localhost:8084](http://localhost:8084)**
 
-1. **Zammad** (Service Desk / Helpdesk)
-2. **Graylog** (мониторинг и логи)
-3. Потом можно красиво описать **PostgreSQL Pro** как enterprise-СУБД
+Ты увидишь **мастер первоначальной настройки Zammad**.
 
-Пиши, когда:
+---
 
-* EspoCRM открылся
-* или сразу: **«давай Zammad»** 🚀
+## 6️⃣ Мастер настройки (что выбрать)
+
+Когда откроется setup:
+
+1. **Create admin account**
+
+   * Email: `admin@local`
+   * Password: `admin123`
+2. Organization name — любое (например `Company IT`)
+3. Email — можно **Skip** (для лабы)
+4. Channels — Skip
+5. Готово
+
+---
+
+## ✅ Что заскринить для отчёта
+
+📸 **Обязательно**:
+
+1. `docker ps` с контейнерами Zammad
+2. Страница setup Zammad
+3. Dashboard после входа
+4. Страница Tickets
+
+---
+
+## 🔗 В итоге у тебя уже есть
+
+| Сервис      | URL                                                |
+| ----------- | -------------------------------------------------- |
+| OpenProject | [http://localhost:8081](http://localhost:8081)     |
+| Nextcloud   | [http://localhost:8082](http://localhost:8082)     |
+| EspoCRM     | [http://localhost:8083](http://localhost:8083)     |
+| **Zammad**  | **[http://localhost:8084](http://localhost:8084)** |
+
+🔥 Это уже **полноценная ИТ-инфраструктура**
+
+---
+
+## Дальше по плану
+
+Следующий шаг (выбирай):
+1️⃣ **Graylog** — мониторинг логов
+2️⃣ **PostgreSQL Pro / БД**
+3️⃣ **Скриншоты + текст для пункта 3.5**
+
+Напиши:
+👉 **«Zammad запустился»** или **«Ошибка вот такая»**
